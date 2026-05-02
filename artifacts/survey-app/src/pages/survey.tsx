@@ -1,476 +1,741 @@
 import { useLocation } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSurvey, type Demographics } from "@/context/survey-context";
-import { questionnaires, stepLabels } from "@/data/questionnaires";
+import { questionnaires } from "@/data/questionnaires";
 import { useCreateSubmission } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
-// Progress Bar Component
-function ProgressBar({ currentStep }: { currentStep: number }) {
-  const total = 8;
-  const progress = ((currentStep + 1) / total) * 100;
+// ─── Shared helpers ──────────────────────────────────────────────────────────
 
+function TapCard({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="w-full mb-8" data-testid="progress-bar">
-      <div className="flex justify-between items-center mb-3">
-        <span className="text-sm text-muted-foreground font-medium">
-          بخش {currentStep + 1} از {total}
-        </span>
-        <span className="text-sm text-primary font-semibold">
-          {stepLabels[currentStep]}
-        </span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-      <div className="flex justify-between mt-2 overflow-x-auto gap-1">
-        {stepLabels.map((label, i) => (
-          <div
-            key={i}
-            className={`flex-1 min-w-0 text-center text-[10px] px-1 truncate transition-colors ${
-              i < currentStep
-                ? "text-primary font-medium"
-                : i === currentStep
-                ? "text-primary font-bold"
-                : "text-muted-foreground/50"
-            }`}
-          >
-            {i <= currentStep ? "●" : "○"}
-          </div>
-        ))}
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full py-4 px-5 rounded-2xl border-2 text-base font-medium text-right transition-all active:scale-[.97] ${
+        selected
+          ? "border-primary bg-primary text-primary-foreground shadow-md"
+          : "border-border bg-card text-foreground hover:border-primary/40 hover:bg-muted/40"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
-// Demographics Form
-function DemographicsStep({ onSubmit }: { onSubmit: (data: Demographics) => void }) {
-  const [form, setForm] = useState<Partial<Demographics>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const update = (field: keyof Demographics, value: string | number) => {
-    setForm((f) => ({ ...f, [field]: value }));
-    setErrors((e) => ({ ...e, [field]: "" }));
-  };
-
-  const validate = () => {
-    const errs: Record<string, string> = {};
-    const required: (keyof Demographics)[] = [
-      "fullName", "age", "competitionAgeGroup", "gender", "height", "weight",
-      "city", "maritalStatus", "sport", "nationalTeamHistory",
-      "premierLeagueHistory", "firstLeagueHistory", "yearsOfExperience",
-      "injuryHistory", "physiotherapyTreatment", "surgerHistory",
-    ];
-    for (const f of required) {
-      if (form[f] === undefined || form[f] === "" || form[f] === null) {
-        errs[f] = "این فیلد الزامی است";
-      }
-    }
-    if (form.injuryHistory === "بله" && !form.timeSinceLastInjury) {
-      errs.timeSinceLastInjury = "این فیلد الزامی است";
-    }
-    return errs;
-  };
-
-  const handleSubmit = () => {
-    const errs = validate();
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs);
-      const firstError = document.querySelector('[data-error="true"]');
-      firstError?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
-    onSubmit(form as Demographics);
-  };
-
-  const field = (
-    label: string,
-    key: keyof Demographics,
-    input: React.ReactNode
-  ) => (
-    <div className="flex flex-col gap-1.5" data-error={!!errors[key]}>
-      <Label className="font-medium text-sm">{label}</Label>
-      {input}
-      {errors[key] && (
-        <p className="text-destructive text-xs">{errors[key]}</p>
-      )}
-    </div>
-  );
-
-  return (
-    <div>
-      <h2 className="text-2xl font-bold text-foreground mb-1">اطلاعات فردی</h2>
-      <p className="text-muted-foreground text-sm mb-8">لطفاً اطلاعات زیر را با دقت وارد نمایید</p>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {field("نام و نام خانوادگی", "fullName",
-          <Input
-            data-testid="input-fullName"
-            value={form.fullName ?? ""}
-            onChange={(e) => update("fullName", e.target.value)}
-            placeholder="نام و نام خانوادگی"
-            className={errors.fullName ? "border-destructive" : ""}
-          />
-        )}
-
-        {field("سن", "age",
-          <Input
-            data-testid="input-age"
-            type="number"
-            value={form.age ?? ""}
-            onChange={(e) => update("age", Number(e.target.value))}
-            placeholder="مثال: ۲۴"
-            className={errors.age ? "border-destructive" : ""}
-          />
-        )}
-
-        {field("رده سنی رقابت", "competitionAgeGroup",
-          <Select onValueChange={(v) => update("competitionAgeGroup", v)}>
-            <SelectTrigger data-testid="select-competitionAgeGroup" className={errors.competitionAgeGroup ? "border-destructive" : ""}>
-              <SelectValue placeholder="انتخاب کنید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="نوجوانان">نوجوانان</SelectItem>
-              <SelectItem value="جوانان">جوانان</SelectItem>
-              <SelectItem value="بزرگسالان">بزرگسالان</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {field("جنسیت", "gender",
-          <Select onValueChange={(v) => update("gender", v)}>
-            <SelectTrigger data-testid="select-gender" className={errors.gender ? "border-destructive" : ""}>
-              <SelectValue placeholder="انتخاب کنید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="مرد">مرد</SelectItem>
-              <SelectItem value="زن">زن</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {field("قد (سانتیمتر)", "height",
-          <Input
-            data-testid="input-height"
-            type="number"
-            value={form.height ?? ""}
-            onChange={(e) => update("height", Number(e.target.value))}
-            placeholder="مثال: ۱۷۵"
-            className={errors.height ? "border-destructive" : ""}
-          />
-        )}
-
-        {field("وزن (کیلوگرم)", "weight",
-          <Input
-            data-testid="input-weight"
-            type="number"
-            value={form.weight ?? ""}
-            onChange={(e) => update("weight", Number(e.target.value))}
-            placeholder="مثال: ۷۰"
-            className={errors.weight ? "border-destructive" : ""}
-          />
-        )}
-
-        {field("شهر", "city",
-          <Input
-            data-testid="input-city"
-            value={form.city ?? ""}
-            onChange={(e) => update("city", e.target.value)}
-            placeholder="نام شهر"
-            className={errors.city ? "border-destructive" : ""}
-          />
-        )}
-
-        {field("وضعیت تأهل", "maritalStatus",
-          <Select onValueChange={(v) => update("maritalStatus", v)}>
-            <SelectTrigger data-testid="select-maritalStatus" className={errors.maritalStatus ? "border-destructive" : ""}>
-              <SelectValue placeholder="انتخاب کنید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="مجرد">مجرد</SelectItem>
-              <SelectItem value="متأهل">متأهل</SelectItem>
-              <SelectItem value="مطلقه">مطلقه</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        <div className="md:col-span-2">
-          {field("رشته ورزشی", "sport",
-            <Input
-              data-testid="input-sport"
-              value={form.sport ?? ""}
-              onChange={(e) => update("sport", e.target.value)}
-              placeholder="مثال: فوتبال، کشتی، تکواندو"
-              className={errors.sport ? "border-destructive" : ""}
-            />
-          )}
-        </div>
-
-        {field("سابقه عضویت در تیم ملی", "nationalTeamHistory",
-          <Select onValueChange={(v) => update("nationalTeamHistory", v)}>
-            <SelectTrigger data-testid="select-nationalTeamHistory" className={errors.nationalTeamHistory ? "border-destructive" : ""}>
-              <SelectValue placeholder="انتخاب کنید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="بله">بله</SelectItem>
-              <SelectItem value="خیر">خیر</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {field("سابقه عضویت در تیم های لیگ برتر", "premierLeagueHistory",
-          <Select onValueChange={(v) => update("premierLeagueHistory", v)}>
-            <SelectTrigger data-testid="select-premierLeagueHistory" className={errors.premierLeagueHistory ? "border-destructive" : ""}>
-              <SelectValue placeholder="انتخاب کنید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="بله">بله</SelectItem>
-              <SelectItem value="خیر">خیر</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {field("سابقه عضویت در تیم های لیگ دسته اول", "firstLeagueHistory",
-          <Select onValueChange={(v) => update("firstLeagueHistory", v)}>
-            <SelectTrigger data-testid="select-firstLeagueHistory" className={errors.firstLeagueHistory ? "border-destructive" : ""}>
-              <SelectValue placeholder="انتخاب کنید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="بله">بله</SelectItem>
-              <SelectItem value="خیر">خیر</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {field("سابقه ورزشی به سال", "yearsOfExperience",
-          <Input
-            data-testid="input-yearsOfExperience"
-            type="number"
-            value={form.yearsOfExperience ?? ""}
-            onChange={(e) => update("yearsOfExperience", Number(e.target.value))}
-            placeholder="مثال: ۱۰"
-            className={errors.yearsOfExperience ? "border-destructive" : ""}
-          />
-        )}
-
-        {field("سابقه آسیب دیدگی", "injuryHistory",
-          <Select onValueChange={(v) => update("injuryHistory", v)}>
-            <SelectTrigger data-testid="select-injuryHistory" className={errors.injuryHistory ? "border-destructive" : ""}>
-              <SelectValue placeholder="انتخاب کنید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="بله">بله</SelectItem>
-              <SelectItem value="خیر">خیر</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {form.injuryHistory === "بله" && (
-          <div className="md:col-span-2">
-            {field("چند وقت از آخرین آسیب دیدگی می‌گذرد؟", "timeSinceLastInjury",
-              <Input
-                data-testid="input-timeSinceLastInjury"
-                value={form.timeSinceLastInjury ?? ""}
-                onChange={(e) => update("timeSinceLastInjury", e.target.value)}
-                placeholder="مثال: ۶ ماه، ۲ سال"
-                className={errors.timeSinceLastInjury ? "border-destructive" : ""}
-              />
-            )}
-          </div>
-        )}
-
-        {field("درمان با فیزیوتراپی", "physiotherapyTreatment",
-          <Select onValueChange={(v) => update("physiotherapyTreatment", v)}>
-            <SelectTrigger data-testid="select-physiotherapyTreatment" className={errors.physiotherapyTreatment ? "border-destructive" : ""}>
-              <SelectValue placeholder="انتخاب کنید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="بله">بله</SelectItem>
-              <SelectItem value="خیر">خیر</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        {field("سابقه جراحی آسیب دیدگی", "surgerHistory",
-          <Select onValueChange={(v) => update("surgerHistory", v)}>
-            <SelectTrigger data-testid="select-surgerHistory" className={errors.surgerHistory ? "border-destructive" : ""}>
-              <SelectValue placeholder="انتخاب کنید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="بله">بله</SelectItem>
-              <SelectItem value="خیر">خیر</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-
-        <div className="md:col-span-2">
-          <div className="flex flex-col gap-1.5">
-            <Label className="font-medium text-sm">آسیب ها ذکر شود (اختیاری)</Label>
-            <Textarea
-              data-testid="textarea-injuryDetails"
-              value={form.injuryDetails ?? ""}
-              onChange={(e) => update("injuryDetails", e.target.value)}
-              placeholder="آسیب های قبلی خود را شرح دهید"
-              rows={3}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-10 flex justify-start">
-        <Button
-          size="lg"
-          onClick={handleSubmit}
-          data-testid="button-next-demographics"
-          className="px-10 py-3 text-base"
-        >
-          مرحله بعد
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 rotate-180"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// Questionnaire Step
-function QuestionnaireStep({
-  questionnaireIndex,
-  currentAnswers,
-  onSubmit,
+function StepHeader({
+  title,
+  subtitle,
+  current,
+  total,
   onBack,
 }: {
-  questionnaireIndex: number;
-  currentAnswers: number[];
-  onSubmit: (answers: number[]) => void;
-  onBack: () => void;
+  title: string;
+  subtitle?: string;
+  current: number;
+  total: number;
+  onBack?: () => void;
 }) {
-  const q = questionnaires[questionnaireIndex];
-  const [answers, setAnswers] = useState<number[]>(
-    currentAnswers.length === q.questions.length ? currentAnswers : new Array(q.questions.length).fill(0)
+  const pct = (current / total) * 100;
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-3">
+        {onBack ? (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground active:opacity-60 transition-opacity"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
+            قبلی
+          </button>
+        ) : (
+          <span />
+        )}
+        <span className="text-xs font-medium text-muted-foreground" dir="ltr">
+          {current} / {total}
+        </span>
+      </div>
+      <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-5">
+        <div
+          className="h-full bg-primary rounded-full transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <h2 className="text-2xl font-bold text-foreground leading-tight">{title}</h2>
+      {subtitle && (
+        <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
+      )}
+    </div>
   );
-  const [showError, setShowError] = useState(false);
+}
 
-  const setAnswer = (qIdx: number, value: number) => {
-    setAnswers((prev) => {
-      const next = [...prev];
-      next[qIdx] = value;
-      return next;
-    });
-    setShowError(false);
-  };
+function NextButton({
+  onClick,
+  disabled,
+  label = "بعدی",
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full mt-6 py-4 rounded-2xl text-base font-semibold bg-primary text-primary-foreground disabled:opacity-40 disabled:cursor-not-allowed active:scale-[.98] transition-all shadow-sm"
+    >
+      {label}
+    </button>
+  );
+}
 
-  const unanswered = answers.filter((a) => a === 0).length;
+function FieldError({ msg }: { msg?: string }) {
+  if (!msg) return null;
+  return <p className="text-destructive text-xs mt-1.5 font-medium">{msg}</p>;
+}
 
-  const handleSubmit = () => {
-    if (unanswered > 0) {
-      setShowError(true);
-      const firstUnanswered = document.querySelector('[data-unanswered="true"]');
-      firstUnanswered?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
-    onSubmit(answers);
+// ─── Demographics sub-steps ──────────────────────────────────────────────────
+
+const DEMO_TOTAL = 8;
+
+type DemoForm = Partial<Demographics>;
+
+function DemoStep0({
+  form,
+  update,
+  onNext,
+}: {
+  form: DemoForm;
+  update: (k: keyof Demographics, v: string | number) => void;
+  onNext: () => void;
+}) {
+  const [err, setErr] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+
+  const next = () => {
+    if (!form.fullName?.trim()) { setErr("نام و نام خانوادگی الزامی است"); return; }
+    onNext();
   };
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-foreground mb-1">{q.title}</h2>
-      <p className="text-muted-foreground text-sm mb-2">
-        لطفاً به هر سوال پاسخ دهید
-      </p>
+      <StepHeader title="نام و نام خانوادگی" current={1} total={DEMO_TOTAL} />
+      <input
+        ref={ref}
+        type="text"
+        value={form.fullName ?? ""}
+        onChange={(e) => { update("fullName", e.target.value); setErr(""); }}
+        placeholder="مثال: علی محمدی"
+        className="w-full py-4 px-4 rounded-2xl border-2 border-border bg-card text-foreground text-base placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+        onKeyDown={(e) => e.key === "Enter" && next()}
+      />
+      <FieldError msg={err} />
+      <NextButton onClick={next} disabled={!form.fullName?.trim()} />
+    </div>
+  );
+}
 
-      {showError && (
-        <div className="bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-3 mb-6 text-destructive text-sm">
-          {unanswered} سوال بی‌پاسخ وجود دارد. لطفاً به همه سوال‌ها پاسخ دهید.
+function DemoStep1({
+  form,
+  update,
+  onNext,
+  onBack,
+}: {
+  form: DemoForm;
+  update: (k: keyof Demographics, v: string | number) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const [err, setErr] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+
+  const next = () => {
+    const n = Number(form.age);
+    if (!form.age || n < 10 || n > 80) { setErr("یک سن معتبر وارد کنید"); return; }
+    onNext();
+  };
+
+  return (
+    <div>
+      <StepHeader title="سن شما چند سال است؟" current={2} total={DEMO_TOTAL} onBack={onBack} />
+      <input
+        ref={ref}
+        type="number"
+        inputMode="numeric"
+        value={form.age ?? ""}
+        onChange={(e) => { update("age", Number(e.target.value)); setErr(""); }}
+        placeholder="مثال: ۲۴"
+        className="w-full py-4 px-4 rounded-2xl border-2 border-border bg-card text-foreground text-base placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+        onKeyDown={(e) => e.key === "Enter" && next()}
+      />
+      <FieldError msg={err} />
+      <NextButton onClick={next} disabled={!form.age} />
+    </div>
+  );
+}
+
+function DemoStep2({
+  form,
+  update,
+  onNext,
+  onBack,
+}: {
+  form: DemoForm;
+  update: (k: keyof Demographics, v: string | number) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const genders = ["مرد", "زن"];
+  const groups = ["نوجوانان", "جوانان", "بزرگسالان"];
+  const ready = form.gender && form.competitionAgeGroup;
+
+  return (
+    <div>
+      <StepHeader title="جنسیت و رده سنی" current={3} total={DEMO_TOTAL} onBack={onBack} />
+
+      <p className="text-sm font-semibold text-foreground mb-3">جنسیت</p>
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {genders.map((g) => (
+          <TapCard key={g} label={g} selected={form.gender === g} onClick={() => update("gender", g)} />
+        ))}
+      </div>
+
+      <p className="text-sm font-semibold text-foreground mb-3">رده سنی رقابت</p>
+      <div className="grid grid-cols-1 gap-3">
+        {groups.map((g) => (
+          <TapCard key={g} label={g} selected={form.competitionAgeGroup === g} onClick={() => update("competitionAgeGroup", g)} />
+        ))}
+      </div>
+
+      <NextButton onClick={onNext} disabled={!ready} />
+    </div>
+  );
+}
+
+function DemoStep3({
+  form,
+  update,
+  onNext,
+  onBack,
+}: {
+  form: DemoForm;
+  update: (k: keyof Demographics, v: string | number) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const [errs, setErrs] = useState<Record<string, string>>({});
+
+  const next = () => {
+    const e: Record<string, string> = {};
+    if (!form.height || Number(form.height) < 100 || Number(form.height) > 250) e.height = "قد معتبر وارد کنید";
+    if (!form.weight || Number(form.weight) < 30 || Number(form.weight) > 200) e.weight = "وزن معتبر وارد کنید";
+    if (Object.keys(e).length) { setErrs(e); return; }
+    onNext();
+  };
+
+  return (
+    <div>
+      <StepHeader title="قد و وزن" current={4} total={DEMO_TOTAL} onBack={onBack} />
+
+      <div className="space-y-4">
+        <div>
+          <label className="text-sm font-semibold text-foreground block mb-2">قد (سانتیمتر)</label>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={form.height ?? ""}
+            onChange={(e) => { update("height", Number(e.target.value)); setErrs((p) => ({ ...p, height: "" })); }}
+            placeholder="مثال: ۱۷۵"
+            className="w-full py-4 px-4 rounded-2xl border-2 border-border bg-card text-foreground text-base placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+          />
+          <FieldError msg={errs.height} />
         </div>
-      )}
+        <div>
+          <label className="text-sm font-semibold text-foreground block mb-2">وزن (کیلوگرم)</label>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={form.weight ?? ""}
+            onChange={(e) => { update("weight", Number(e.target.value)); setErrs((p) => ({ ...p, weight: "" })); }}
+            placeholder="مثال: ۷۰"
+            className="w-full py-4 px-4 rounded-2xl border-2 border-border bg-card text-foreground text-base placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+          />
+          <FieldError msg={errs.weight} />
+        </div>
+      </div>
 
-      {/* Scale legend */}
-      <div className="bg-muted/40 rounded-xl p-4 mb-6 border border-border/50">
-        <p className="text-xs text-muted-foreground mb-2 font-medium">مقیاس پاسخ‌ها:</p>
-        <div className="flex flex-wrap gap-2">
-          {q.scale.map((label, i) => (
-            <span key={i} className="inline-flex items-center gap-1 text-xs bg-background border border-border rounded-full px-3 py-1">
-              <span className="font-semibold text-primary">{i + 1}</span>
-              <span className="text-foreground">{label}</span>
-            </span>
+      <NextButton onClick={next} disabled={!form.height || !form.weight} />
+    </div>
+  );
+}
+
+function DemoStep4({
+  form,
+  update,
+  onNext,
+  onBack,
+}: {
+  form: DemoForm;
+  update: (k: keyof Demographics, v: string | number) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const [cityErr, setCityErr] = useState("");
+  const statuses = ["مجرد", "متأهل", "مطلقه"];
+  const ready = form.city?.trim() && form.maritalStatus;
+
+  const next = () => {
+    if (!form.city?.trim()) { setCityErr("شهر الزامی است"); return; }
+    if (!form.maritalStatus) return;
+    onNext();
+  };
+
+  return (
+    <div>
+      <StepHeader title="شهر و وضعیت تأهل" current={5} total={DEMO_TOTAL} onBack={onBack} />
+
+      <div className="mb-6">
+        <label className="text-sm font-semibold text-foreground block mb-2">شهر</label>
+        <input
+          type="text"
+          value={form.city ?? ""}
+          onChange={(e) => { update("city", e.target.value); setCityErr(""); }}
+          placeholder="نام شهر"
+          className="w-full py-4 px-4 rounded-2xl border-2 border-border bg-card text-foreground text-base placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+        />
+        <FieldError msg={cityErr} />
+      </div>
+
+      <p className="text-sm font-semibold text-foreground mb-3">وضعیت تأهل</p>
+      <div className="grid grid-cols-1 gap-3">
+        {statuses.map((s) => (
+          <TapCard key={s} label={s} selected={form.maritalStatus === s} onClick={() => update("maritalStatus", s)} />
+        ))}
+      </div>
+
+      <NextButton onClick={next} disabled={!ready} />
+    </div>
+  );
+}
+
+function DemoStep5({
+  form,
+  update,
+  onNext,
+  onBack,
+}: {
+  form: DemoForm;
+  update: (k: keyof Demographics, v: string | number) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const [errs, setErrs] = useState<Record<string, string>>({});
+
+  const next = () => {
+    const e: Record<string, string> = {};
+    if (!form.sport?.trim()) e.sport = "رشته ورزشی الزامی است";
+    if (!form.yearsOfExperience || Number(form.yearsOfExperience) < 0) e.years = "سابقه ورزشی معتبر وارد کنید";
+    if (Object.keys(e).length) { setErrs(e); return; }
+    onNext();
+  };
+
+  return (
+    <div>
+      <StepHeader title="رشته ورزشی" current={6} total={DEMO_TOTAL} onBack={onBack} />
+
+      <div className="space-y-5">
+        <div>
+          <label className="text-sm font-semibold text-foreground block mb-2">رشته ورزشی</label>
+          <input
+            type="text"
+            value={form.sport ?? ""}
+            onChange={(e) => { update("sport", e.target.value); setErrs((p) => ({ ...p, sport: "" })); }}
+            placeholder="مثال: فوتبال، کشتی، تکواندو"
+            className="w-full py-4 px-4 rounded-2xl border-2 border-border bg-card text-foreground text-base placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+          />
+          <FieldError msg={errs.sport} />
+        </div>
+        <div>
+          <label className="text-sm font-semibold text-foreground block mb-2">سابقه ورزشی (سال)</label>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={form.yearsOfExperience ?? ""}
+            onChange={(e) => { update("yearsOfExperience", Number(e.target.value)); setErrs((p) => ({ ...p, years: "" })); }}
+            placeholder="مثال: ۱۰"
+            className="w-full py-4 px-4 rounded-2xl border-2 border-border bg-card text-foreground text-base placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+          />
+          <FieldError msg={errs.years} />
+        </div>
+      </div>
+
+      <NextButton onClick={next} disabled={!form.sport?.trim() || form.yearsOfExperience === undefined} />
+    </div>
+  );
+}
+
+function DemoStep6({
+  form,
+  update,
+  onNext,
+  onBack,
+}: {
+  form: DemoForm;
+  update: (k: keyof Demographics, v: string | number) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const yesNo = ["بله", "خیر"];
+  const ready = form.nationalTeamHistory && form.premierLeagueHistory && form.firstLeagueHistory;
+
+  return (
+    <div>
+      <StepHeader title="سابقه حضور در تیم‌ها" current={7} total={DEMO_TOTAL} onBack={onBack} />
+
+      {(
+        [
+          { label: "سابقه عضویت در تیم ملی", key: "nationalTeamHistory" },
+          { label: "سابقه عضویت در لیگ برتر", key: "premierLeagueHistory" },
+          { label: "سابقه عضویت در لیگ دسته اول", key: "firstLeagueHistory" },
+        ] as { label: string; key: keyof Demographics }[]
+      ).map(({ label, key }) => (
+        <div key={key} className="mb-5">
+          <p className="text-sm font-semibold text-foreground mb-2">{label}</p>
+          <div className="grid grid-cols-2 gap-3">
+            {yesNo.map((v) => (
+              <TapCard key={v} label={v} selected={form[key] === v} onClick={() => update(key, v)} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <NextButton onClick={onNext} disabled={!ready} />
+    </div>
+  );
+}
+
+function DemoStep7({
+  form,
+  update,
+  onNext,
+  onBack,
+}: {
+  form: DemoForm;
+  update: (k: keyof Demographics, v: string | number) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const yesNo = ["بله", "خیر"];
+  const ready =
+    form.injuryHistory &&
+    form.physiotherapyTreatment &&
+    form.surgerHistory &&
+    (form.injuryHistory !== "بله" || form.timeSinceLastInjury?.trim());
+
+  return (
+    <div>
+      <StepHeader title="سابقه آسیب‌دیدگی" current={8} total={DEMO_TOTAL} onBack={onBack} />
+
+      <div className="mb-5">
+        <p className="text-sm font-semibold text-foreground mb-2">سابقه آسیب دیدگی</p>
+        <div className="grid grid-cols-2 gap-3">
+          {yesNo.map((v) => (
+            <TapCard key={v} label={v} selected={form.injuryHistory === v} onClick={() => update("injuryHistory", v)} />
           ))}
         </div>
       </div>
 
-      <div className="space-y-4">
-        {q.questions.map((question, qIdx) => {
-          const isUnanswered = answers[qIdx] === 0;
-          return (
-            <div
-              key={qIdx}
-              data-unanswered={isUnanswered && showError ? "true" : "false"}
-              className={`bg-card border rounded-xl p-4 transition-all ${
-                isUnanswered && showError ? "border-destructive/50 bg-destructive/5" : "border-border"
-              }`}
-            >
-              <div className="flex gap-3 mb-3">
-                <span className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
-                  {qIdx + 1}
-                </span>
-                <p className="text-sm md:text-base font-medium text-foreground leading-relaxed pt-0.5">
-                  {question}
-                </p>
-              </div>
-              <div className={`grid gap-2 ${q.scale.length <= 3 ? "grid-cols-3" : "grid-cols-5"}`}>
-                {q.scale.map((label, optIdx) => {
-                  const value = optIdx + 1;
-                  const selected = answers[qIdx] === value;
-                  return (
-                    <button
-                      key={optIdx}
-                      data-testid={`radio-q${questionnaireIndex + 1}-${qIdx + 1}-${value}`}
-                      onClick={() => setAnswer(qIdx, value)}
-                      className={`flex flex-col items-center gap-1 rounded-lg border-2 p-2 md:p-3 cursor-pointer transition-all text-center ${
-                        selected
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-background hover:border-primary/40 hover:bg-muted/50"
-                      }`}
-                    >
-                      <span className={`text-base font-bold ${selected ? "text-primary" : "text-muted-foreground"}`}>
-                        {value}
-                      </span>
-                      <span className="text-[10px] md:text-xs leading-tight text-center">
-                        {label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+      {form.injuryHistory === "بله" && (
+        <div className="mb-5 animate-in fade-in slide-in-from-top-2 duration-200">
+          <label className="text-sm font-semibold text-foreground block mb-2">
+            چند وقت از آخرین آسیب می‌گذرد؟
+          </label>
+          <input
+            type="text"
+            value={form.timeSinceLastInjury ?? ""}
+            onChange={(e) => update("timeSinceLastInjury", e.target.value)}
+            placeholder="مثال: ۶ ماه، ۲ سال"
+            className="w-full py-4 px-4 rounded-2xl border-2 border-border bg-card text-foreground text-base placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+          />
+        </div>
+      )}
+
+      <div className="mb-5">
+        <p className="text-sm font-semibold text-foreground mb-2">درمان با فیزیوتراپی</p>
+        <div className="grid grid-cols-2 gap-3">
+          {yesNo.map((v) => (
+            <TapCard key={v} label={v} selected={form.physiotherapyTreatment === v} onClick={() => update("physiotherapyTreatment", v)} />
+          ))}
+        </div>
       </div>
 
-      <div className="mt-10 flex justify-between items-center">
-        <Button variant="outline" onClick={onBack} data-testid="button-back">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          مرحله قبل
-        </Button>
-        <Button
-          size="lg"
-          onClick={handleSubmit}
-          data-testid="button-next-questionnaire"
-          className="px-10"
-        >
-          {questionnaireIndex === 6 ? "ثبت نهایی" : "مرحله بعد"}
-          {questionnaireIndex < 6 && (
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 rotate-180"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          )}
-        </Button>
+      <div className="mb-5">
+        <p className="text-sm font-semibold text-foreground mb-2">سابقه جراحی آسیب‌دیدگی</p>
+        <div className="grid grid-cols-2 gap-3">
+          {yesNo.map((v) => (
+            <TapCard key={v} label={v} selected={form.surgerHistory === v} onClick={() => update("surgerHistory", v)} />
+          ))}
+        </div>
       </div>
+
+      <div className="mb-5">
+        <label className="text-sm font-medium text-muted-foreground block mb-2">آسیب‌ها را ذکر کنید (اختیاری)</label>
+        <Textarea
+          value={form.injuryDetails ?? ""}
+          onChange={(e) => update("injuryDetails", e.target.value)}
+          placeholder="توضیح مختصر درباره آسیب‌های قبلی"
+          rows={3}
+          className="rounded-2xl resize-none"
+        />
+      </div>
+
+      <NextButton onClick={onNext} disabled={!ready} label="شروع پرسشنامه‌ها" />
+    </div>
+  );
+}
+
+// ─── Demographics container ───────────────────────────────────────────────────
+
+function DemographicsFlow({ onComplete }: { onComplete: (d: Demographics) => void }) {
+  const [subStep, setSubStep] = useState(0);
+  const [form, setForm] = useState<DemoForm>({});
+
+  const update = (k: keyof Demographics, v: string | number) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const next = () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSubStep((s) => s + 1); };
+  const back = () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSubStep((s) => Math.max(0, s - 1)); };
+
+  const props = { form, update, onNext: next, onBack: back };
+
+  const submit = () => onComplete(form as Demographics);
+
+  const steps = [
+    <DemoStep0 key={0} form={form} update={update} onNext={next} />,
+    <DemoStep1 key={1} {...props} />,
+    <DemoStep2 key={2} {...props} />,
+    <DemoStep3 key={3} {...props} />,
+    <DemoStep4 key={4} {...props} />,
+    <DemoStep5 key={5} {...props} />,
+    <DemoStep6 key={6} {...props} />,
+    <DemoStep7 key={7} form={form} update={update} onNext={submit} onBack={back} />,
+  ];
+
+  return <>{steps[subStep]}</>;
+}
+
+// ─── Questionnaire step ───────────────────────────────────────────────────────
+
+function QuestionnaireFlow({
+  qIndex,
+  savedAnswers,
+  onComplete,
+  onBack,
+}: {
+  qIndex: number;
+  savedAnswers: number[];
+  onComplete: (answers: number[]) => void;
+  onBack: () => void;
+}) {
+  const q = questionnaires[qIndex];
+  const total = q.questions.length;
+  const [answers, setAnswers] = useState<number[]>(
+    savedAnswers.length === total ? savedAnswers : new Array(total).fill(0)
+  );
+  const [current, setCurrent] = useState(0);
+  const [animDir, setAnimDir] = useState<"in" | "out">("in");
+  const [visible, setVisible] = useState(true);
+
+  const goTo = (idx: number) => {
+    setVisible(false);
+    setTimeout(() => {
+      setCurrent(idx);
+      setVisible(true);
+    }, 150);
+  };
+
+  const selectAnswer = (value: number) => {
+    const next = [...answers];
+    next[current] = value;
+    setAnswers(next);
+
+    // auto-advance after short delay
+    if (current < total - 1) {
+      setTimeout(() => goTo(current + 1), 300);
+    } else {
+      // last question — check all answered
+      const unanswered = next.filter((a) => a === 0).length;
+      if (unanswered === 0) {
+        setTimeout(() => onComplete(next), 400);
+      } else {
+        // jump to first unanswered
+        const firstBlank = next.findIndex((a) => a === 0);
+        setTimeout(() => goTo(firstBlank), 300);
+      }
+    }
+  };
+
+  const prevQuestion = () => {
+    if (current > 0) goTo(current - 1);
+    else onBack();
+  };
+
+  const question = q.questions[current];
+  const answered = answers[current];
+  const answeredCount = answers.filter((a) => a > 0).length;
+
+  // show "finish" button if all answered but on last question
+  const allAnswered = answers.every((a) => a > 0);
+
+  return (
+    <div className="flex flex-col min-h-0">
+      {/* Header */}
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={prevQuestion}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground active:opacity-60"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+            </svg>
+            قبلی
+          </button>
+          <span className="text-xs font-medium text-muted-foreground">
+            {answeredCount} / {total} پاسخ داده شد
+          </span>
+        </div>
+
+        {/* Question progress dots */}
+        <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-4">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-300"
+            style={{ width: `${((current + 1) / total) * 100}%` }}
+          />
+        </div>
+
+        <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">
+          {q.shortTitle}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          سوال {current + 1} از {total}
+        </p>
+      </div>
+
+      {/* Question card */}
+      <div
+        className={`transition-all duration-150 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}
+      >
+        <div className="bg-card border border-border rounded-2xl p-5 mb-6 min-h-24 flex items-center">
+          <p className="text-lg font-medium text-foreground leading-relaxed">
+            {question}
+          </p>
+        </div>
+
+        {/* Scale options */}
+        <div className={`grid gap-3 ${q.scale.length <= 3 ? "grid-cols-1" : "grid-cols-1"}`}>
+          {q.scale.map((label, i) => {
+            const value = i + 1;
+            const sel = answered === value;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => selectAnswer(value)}
+                className={`w-full flex items-center gap-4 py-4 px-5 rounded-2xl border-2 text-right transition-all active:scale-[.97] ${
+                  sel
+                    ? "border-primary bg-primary text-primary-foreground shadow-md"
+                    : "border-border bg-card text-foreground hover:border-primary/30 hover:bg-muted/40"
+                }`}
+              >
+                <span
+                  className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 ${
+                    sel ? "border-primary-foreground bg-primary-foreground/20 text-primary-foreground" : "border-border text-muted-foreground"
+                  }`}
+                >
+                  {value}
+                </span>
+                <span className="text-base font-medium">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Navigation dots */}
+      <div className="mt-6 flex justify-center gap-1.5 flex-wrap">
+        {q.questions.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => goTo(i)}
+            className={`rounded-full transition-all ${
+              i === current
+                ? "w-5 h-2 bg-primary"
+                : answers[i] > 0
+                ? "w-2 h-2 bg-primary/40"
+                : "w-2 h-2 bg-muted"
+            }`}
+          />
+        ))}
+      </div>
+
+      {/* Finish button if all answered */}
+      {allAnswered && (
+        <button
+          type="button"
+          onClick={() => onComplete(answers)}
+          className="w-full mt-5 py-4 rounded-2xl text-base font-semibold bg-primary text-primary-foreground active:scale-[.98] transition-all shadow-sm animate-in fade-in duration-300"
+        >
+          {qIndex === questionnaires.length - 1 ? "ثبت نهایی" : "مرحله بعد"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Main survey page ─────────────────────────────────────────────────────────
+
+const MAIN_TOTAL = 8; // 1 demo + 7 questionnaires
+
+function MainProgress({ step }: { step: number }) {
+  const labels = ["اطلاعات فردی", "پرخاشگری", "تحلیل رفتگی", "اعتیاد", "اضطراب", "سرسختی", "خلق", "انگیزه"];
+  return (
+    <div className="flex items-center gap-2 px-4 py-3 bg-card border-b border-border sticky top-0 z-10">
+      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+        <div
+          className="h-full bg-primary rounded-full transition-all duration-500"
+          style={{ width: `${((step + 1) / MAIN_TOTAL) * 100}%` }}
+        />
+      </div>
+      <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">
+        {labels[step]}
+      </span>
     </div>
   );
 }
@@ -481,20 +746,16 @@ export default function Survey() {
   const { toast } = useToast();
   const createSubmission = useCreateSubmission();
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [state.currentStep]);
-
-  const handleDemographicsSubmit = (data: Demographics) => {
+  const handleDemographicsComplete = (data: Demographics) => {
     setDemographics(data);
     nextStep();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleQuestionnaireSubmit = async (qIndex: number, answers: number[]) => {
-    setQuestionnaireAnswers(qIndex + 1, answers);
+  const handleQuestionnaireComplete = (qIdx: number, answers: number[]) => {
+    setQuestionnaireAnswers(qIdx + 1, answers);
 
-    if (qIndex === 6) {
-      // Final step — submit
+    if (qIdx === 6) {
       const payload = {
         demographics: state.demographics!,
         questionnaire1: state.questionnaire1,
@@ -503,63 +764,58 @@ export default function Survey() {
         questionnaire4: state.questionnaire4,
         questionnaire5: state.questionnaire5,
         questionnaire6: state.questionnaire6,
-        questionnaire7: answers, // use current answers since state not updated yet
+        questionnaire7: answers,
       };
-
       createSubmission.mutate(
         { data: payload },
         {
-          onSuccess: () => {
-            setLocation("/thank-you");
-          },
-          onError: () => {
+          onSuccess: () => setLocation("/thank-you"),
+          onError: () =>
             toast({
               variant: "destructive",
-              title: "خطا در ثبت اطلاعات",
+              title: "خطا در ثبت",
               description: "لطفاً دوباره تلاش کنید",
-            });
-          },
+            }),
         }
       );
     } else {
       nextStep();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
+  const handleQuestionnairBack = () => {
+    prevStep();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
-    <div className="min-h-[100dvh] bg-background py-6 px-4 md:px-6">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="mb-6 text-center">
-          <h1 className="text-xl font-bold text-primary">پژوهش عوامل روانشناختی ورزشکاران مازندرانی</h1>
-        </div>
+    <div className="min-h-[100dvh] bg-background flex flex-col">
+      <MainProgress step={state.currentStep} />
 
-        {/* Progress */}
-        <ProgressBar currentStep={state.currentStep} />
-
-        {/* Card */}
-        <div className="bg-card border border-border rounded-2xl shadow-md p-6 md:p-8">
-          {state.currentStep === 0 ? (
-            <DemographicsStep onSubmit={handleDemographicsSubmit} />
-          ) : (
-            <QuestionnaireStep
-              questionnaireIndex={state.currentStep - 1}
-              currentAnswers={(state as Record<string, number[]>)[`questionnaire${state.currentStep}`] ?? []}
-              onSubmit={(answers) => handleQuestionnaireSubmit(state.currentStep - 1, answers)}
-              onBack={prevStep}
-            />
-          )}
-
-          {createSubmission.isPending && (
-            <div className="fixed inset-0 bg-background/80 flex items-center justify-center z-50">
-              <div className="bg-card border border-border rounded-2xl p-8 text-center shadow-xl">
-                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-foreground font-medium">در حال ثبت اطلاعات...</p>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
+        {state.currentStep === 0 ? (
+          <DemographicsFlow onComplete={handleDemographicsComplete} />
+        ) : (
+          <QuestionnaireFlow
+            key={state.currentStep}
+            qIndex={state.currentStep - 1}
+            savedAnswers={(state as Record<string, number[]>)[`questionnaire${state.currentStep}`] ?? []}
+            onComplete={(answers) => handleQuestionnaireComplete(state.currentStep - 1, answers)}
+            onBack={handleQuestionnairBack}
+          />
+        )}
       </div>
+
+      {createSubmission.isPending && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-3xl p-8 text-center shadow-2xl w-72">
+            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-foreground font-semibold">در حال ثبت اطلاعات...</p>
+            <p className="text-muted-foreground text-sm mt-1">لطفاً صبر کنید</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
