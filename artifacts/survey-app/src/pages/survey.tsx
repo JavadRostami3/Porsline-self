@@ -615,9 +615,9 @@ function QuestionnaireFlow({
 
   return (
     <div className="flex flex-col min-h-0">
-      {/* Header */}
+      {/* Single inner header: back button + question counter only */}
       <div className="mb-5">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-4">
           <button
             onClick={prevQuestion}
             className="flex items-center gap-1.5 text-sm text-muted-foreground active:opacity-60"
@@ -627,25 +627,18 @@ function QuestionnaireFlow({
             </svg>
             قبلی
           </button>
-          <span className="text-xs font-medium text-muted-foreground">
-            {answeredCount} / {total} پاسخ داده شد
+          <span className="text-sm font-semibold text-foreground" dir="ltr">
+            {current + 1} / {total}
           </span>
         </div>
 
-        {/* Question progress dots */}
-        <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-4">
+        {/* The ONE and only progress bar on this screen */}
+        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
           <div
             className="h-full bg-primary rounded-full transition-all duration-300"
             style={{ width: `${((current + 1) / total) * 100}%` }}
           />
         </div>
-
-        <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">
-          {q.shortTitle}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          سوال {current + 1} از {total}
-        </p>
       </div>
 
       {/* Question card */}
@@ -721,21 +714,43 @@ function QuestionnaireFlow({
 
 // ─── Main survey page ─────────────────────────────────────────────────────────
 
-const MAIN_TOTAL = 8; // 1 demo + 7 questionnaires
+const SECTION_LABELS = [
+  "اطلاعات فردی",
+  "پرخاشگری",
+  "تحلیل رفتگی",
+  "اعتیاد به تمرین",
+  "اضطراب رقابتی",
+  "سرسختی ذهنی",
+  "حالات خلقی",
+  "انگیزه مشارکت",
+];
 
-function MainProgress({ step }: { step: number }) {
-  const labels = ["اطلاعات فردی", "پرخاشگری", "تحلیل رفتگی", "اعتیاد", "اضطراب", "سرسختی", "خلق", "انگیزه"];
+// Top bar: pure text context — zero bars, zero pills — never competes with inner progress
+function SurveyTopBar({ step }: { step: number }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-3 bg-card border-b border-border sticky top-0 z-10">
-      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-        <div
-          className="h-full bg-primary rounded-full transition-all duration-500"
-          style={{ width: `${((step + 1) / MAIN_TOTAL) * 100}%` }}
-        />
+    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center justify-between gap-3">
+      {/* Section label on the right (RTL start) */}
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold" dir="ltr">
+          {step + 1}
+        </span>
+        <span className="text-sm font-bold text-foreground truncate">{SECTION_LABELS[step]}</span>
       </div>
-      <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">
-        {labels[step]}
-      </span>
+      {/* Steps mini-dots on the left (RTL end) — circles, clearly NOT a bar */}
+      <div className="flex-shrink-0 flex gap-1">
+        {SECTION_LABELS.map((_, i) => (
+          <div
+            key={i}
+            className={`rounded-full transition-all duration-300 ${
+              i < step
+                ? "w-1.5 h-1.5 bg-primary/50"
+                : i === step
+                ? "w-2 h-2 bg-primary"
+                : "w-1.5 h-1.5 bg-muted"
+            }`}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -791,7 +806,7 @@ export default function Survey() {
 
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col">
-      <MainProgress step={state.currentStep} />
+      <SurveyTopBar step={state.currentStep} />
 
       <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
         {state.currentStep === 0 ? (
