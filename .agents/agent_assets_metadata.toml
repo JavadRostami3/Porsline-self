@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "RaxXg1a3zTw77106_Mpt-"
+uri = "file://README.md"
+type = "text"
+title = "راهنمای استقرار روی VPS"
