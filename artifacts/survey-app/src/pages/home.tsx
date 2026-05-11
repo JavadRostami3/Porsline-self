@@ -56,9 +56,12 @@ export default function Home() {
         </div>
       </div>
       
-      <div className="mt-12 text-sm text-muted-foreground/60 z-10 flex items-center gap-4">
-        <span>پژوهش روانشناسی ورزشی • استان مازندران</span>
-        <span className="w-1 h-1 bg-border rounded-full"></span>
+      <div className="mt-8 text-sm text-muted-foreground/60 z-10 flex flex-col items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center">
+          <span>پژوهشگر: <span className="font-medium text-muted-foreground/80">امید ابراهیمی</span></span>
+          <span className="w-1 h-1 bg-border rounded-full hidden sm:block"></span>
+          <span>طراحی و اجرا: <span className="font-medium text-muted-foreground/80">محمدجواد رستمی</span></span>
+        </div>
         <Link href="/admin/login" className="hover:text-primary transition-colors">ورود پژوهشگر</Link>
       </div>
     </div>

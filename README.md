@@ -262,27 +262,147 @@ curl http://your-domain.com/api/healthz
 
 ---
 
-## به‌روزرسانی پروژه
+## به‌روزرسانی پروژه (نسخه جدید — وقتی نسخه قبل در حال اجراست)
+
+این بخش فرض می‌کند نسخه قبلی روی `/var/www/survey-app` با PM2 در حال اجراست.
+
+### تغییرات این نسخه نسبت به قبلی
+
+| تغییر | نیاز به اقدام |
+|-------|--------------|
+| ستون `scores` به جدول `submissions` اضافه شد | ✅ مایگریشن دیتابیس (مرحله ۳) |
+| صفحه نتایج شخصی‌سازی‌شده برای کاربر | ✅ بیلد مجدد فرانت‌اند |
+| داشبورد ادمین با نمودارهای امتیاز روانشناختی | ✅ بیلد مجدد فرانت‌اند |
+| API آمار با میانگین امتیازات روانشناختی | ✅ بیلد مجدد + ری‌استارت API |
+| رفع باگ ارسال دوتایی | ✅ بیلد مجدد |
+| نام پژوهشگر و طراح در صفحه اصلی | ✅ بیلد مجدد فرانت‌اند |
+
+---
+
+### مراحل به‌روزرسانی (به ترتیب اجرا کنید)
+
+#### مرحله ۱ — دریافت کد جدید
+
+اگر از Git استفاده می‌کنید:
+
+```bash
+cd /var/www/survey-app
+git pull
+```
+
+اگر فایل‌ها را مستقیم آپلود کردید، ابتدا فایل‌های جدید را جایگزین کنید، سپس ادامه دهید.
+
+---
+
+#### مرحله ۲ — نصب وابستگی‌های جدید
+
+```bash
+cd /var/www/survey-app
+pnpm install --frozen-lockfile
+```
+
+---
+
+#### مرحله ۳ — مایگریشن دیتابیس ⚠️ مهم
+
+این نسخه یک ستون جدید (`scores JSONB`) به جدول `submissions` اضافه می‌کند. **بدون این مرحله API خطا می‌دهد.**
 
 ```bash
 cd /var/www/survey-app
 
-# دریافت آخرین تغییرات
-git pull
+# بارگذاری متغیرهای محیطی از فایل .env
+export $(cat .env | grep -v '#' | xargs)
 
-# نصب وابستگی‌های جدید (در صورت نیاز)
-pnpm install --frozen-lockfile
+# اعمال تغییرات schema روی دیتابیس زنده
+pnpm --filter @workspace/db run push
+```
 
-# مایگریشن احتمالی دیتابیس
+خروجی موردانتظار:
+```
+[✓] Changes applied
+```
+
+> **نکته:** این دستور فقط ستون جدید اضافه می‌کند و **داده‌های قبلی را حذف نمی‌کند.**
+
+---
+
+#### مرحله ۴ — بیلد مجدد
+
+```bash
+cd /var/www/survey-app
+
+# بیلد lib های مشترک
+pnpm run typecheck:libs
+
+# بیلد API Server
+pnpm --filter @workspace/api-server run build
+
+# بیلد فرانت‌اند
+pnpm --filter @workspace/survey-app run build
+```
+
+---
+
+#### مرحله ۵ — ری‌استارت سرویس
+
+```bash
+# ری‌استارت API (بدون downtime قابل توجه)
+pm2 restart survey-api
+
+# بررسی وضعیت
+pm2 status
+pm2 logs survey-api --lines 20
+```
+
+---
+
+#### مرحله ۶ — تأیید عملکرد
+
+```bash
+# تست API
+curl http://localhost:8080/api/healthz
+# انتظار: {"status":"ok"}
+
+# تست endpoint آمار ادمین
+curl -b "admin_session=authenticated" http://localhost:8080/api/admin/stats
+# انتظار: JSON با فیلد scoreAverages
+
+# تست فرانت‌اند از طریق Nginx
+curl -I http://your-domain.com/
+# انتظار: HTTP 200
+```
+
+---
+
+### رفع مشکلات احتمالی هنگام آپدیت
+
+**خطای `column "scores" does not exist`:**
+```bash
+# مایگریشن اجرا نشده — مرحله ۳ را دوباره اجرا کنید
 export $(cat .env | grep -v '#' | xargs)
 pnpm --filter @workspace/db run push
+pm2 restart survey-api
+```
 
-# بیلد مجدد
+**خطای بیلد (TypeScript errors):**
+```bash
+# ابتدا lib ها را بیلد کنید، سپس اپ
+pnpm run typecheck:libs
 pnpm --filter @workspace/api-server run build
 pnpm --filter @workspace/survey-app run build
+```
 
-# ری‌استارت API
-pm2 restart survey-api
+**فرانت‌اند کش قدیمی نشان می‌دهد:**
+```bash
+# Nginx cache را پاک کنید
+sudo systemctl reload nginx
+# و در مرورگر Ctrl+Shift+R بزنید
+```
+
+**PM2 پس از reboot اجرا نمی‌شود:**
+```bash
+pm2 save
+pm2 startup  # دستور خروجی را اجرا کنید
 ```
 
 ---

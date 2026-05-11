@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Survey from "@/pages/survey";
 import ThankYou from "@/pages/thank-you";
+import Results from "@/pages/results";
 import AdminLogin from "@/pages/admin/login";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminSubmissions from "@/pages/admin/submissions";
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/survey" component={Survey} />
       <Route path="/thank-you" component={ThankYou} />
+      <Route path="/results" component={Results} />
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/submissions/:id" component={SubmissionDetails} />
       <Route path="/admin/submissions" component={AdminSubmissions} />

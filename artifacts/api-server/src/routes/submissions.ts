@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, submissionsTable } from "@workspace/db";
 import { CreateSubmissionBody } from "@workspace/api-zod";
-import { eq, sql, count, avg, gte } from "drizzle-orm";
+import { calculateScores, type Scores } from "../lib/scoring";
 
 const router: IRouter = Router();
 
@@ -13,6 +13,17 @@ router.post("/submissions", async (req, res): Promise<void> => {
   }
 
   const { demographics, ...questionnaires } = parsed.data;
+
+  // Calculate scores from raw answers
+  const scores: Scores = calculateScores(
+    questionnaires.questionnaire1,
+    questionnaires.questionnaire2,
+    questionnaires.questionnaire3,
+    questionnaires.questionnaire4,
+    questionnaires.questionnaire5,
+    questionnaires.questionnaire6,
+    questionnaires.questionnaire7,
+  );
 
   const [submission] = await db
     .insert(submissionsTable)
@@ -42,13 +53,14 @@ router.post("/submissions", async (req, res): Promise<void> => {
       questionnaire5: questionnaires.questionnaire5,
       questionnaire6: questionnaires.questionnaire6,
       questionnaire7: questionnaires.questionnaire7,
+      scores: scores as unknown as Record<string, unknown>,
     })
     .returning();
 
   res.status(201).json(formatSubmission(submission));
 });
 
-function formatSubmission(row: typeof submissionsTable.$inferSelect) {
+export function formatSubmission(row: typeof submissionsTable.$inferSelect) {
   return {
     id: row.id,
     demographics: {
@@ -78,9 +90,9 @@ function formatSubmission(row: typeof submissionsTable.$inferSelect) {
     questionnaire5: row.questionnaire5 as number[],
     questionnaire6: row.questionnaire6 as number[],
     questionnaire7: row.questionnaire7 as number[],
+    scores: row.scores ?? null,
     submittedAt: row.submittedAt.toISOString(),
   };
 }
 
-export { formatSubmission };
 export default router;

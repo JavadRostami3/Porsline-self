@@ -34,6 +34,9 @@ export const submissionsTable = pgTable("submissions", {
   questionnaire6: jsonb("questionnaire6").notNull().$type<number[]>(),
   questionnaire7: jsonb("questionnaire7").notNull().$type<number[]>(),
 
+  // Calculated scores stored after submission (nullable for backward compatibility)
+  scores: jsonb("scores").$type<Record<string, unknown> | null>().default(null),
+
   submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

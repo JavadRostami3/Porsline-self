@@ -760,6 +760,8 @@ export default function Survey() {
   const { state, setDemographics, setQuestionnaireAnswers, nextStep, prevStep } = useSurvey();
   const { toast } = useToast();
   const createSubmission = useCreateSubmission();
+  // useRef guard — persists across renders, prevents double-submission
+  const hasSubmittedRef = useRef(false);
 
   const handleDemographicsComplete = (data: Demographics) => {
     setDemographics(data);
@@ -771,6 +773,9 @@ export default function Survey() {
     setQuestionnaireAnswers(qIdx + 1, answers);
 
     if (qIdx === 6) {
+      // Guard: prevent double submission from double-click or React timing
+      if (hasSubmittedRef.current || createSubmission.isPending) return;
+      hasSubmittedRef.current = true;
       const payload = {
         demographics: state.demographics!,
         questionnaire1: state.questionnaire1,
@@ -784,7 +789,17 @@ export default function Survey() {
       createSubmission.mutate(
         { data: payload },
         {
-          onSuccess: () => setLocation("/thank-you"),
+          onSuccess: (data) => {
+            // Store scores in sessionStorage for the results page
+            const resp = data as unknown as Record<string, unknown>;
+            if (resp?.scores) {
+              sessionStorage.setItem("survey_scores", JSON.stringify(resp.scores));
+              sessionStorage.setItem("survey_name", state.demographics?.fullName ?? "");
+              setLocation("/results");
+            } else {
+              setLocation("/thank-you");
+            }
+          },
           onError: () =>
             toast({
               variant: "destructive",
@@ -815,7 +830,7 @@ export default function Survey() {
           <QuestionnaireFlow
             key={state.currentStep}
             qIndex={state.currentStep - 1}
-            savedAnswers={(state as Record<string, number[]>)[`questionnaire${state.currentStep}`] ?? []}
+            savedAnswers={(state as unknown as Record<string, number[]>)[`questionnaire${state.currentStep}`] ?? []}
             onComplete={(answers) => handleQuestionnaireComplete(state.currentStep - 1, answers)}
             onBack={handleQuestionnairBack}
           />
