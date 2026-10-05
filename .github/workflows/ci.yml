@@ -29,5 +29,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck and build workspace
-        run: pnpm run build
+      - name: Typecheck workspace
+        run: pnpm run typecheck
+
+      - name: Build API
+        run: pnpm --filter @workspace/api-server run build
+
+      - name: Build survey frontend
+        run: pnpm --filter @workspace/survey-app run build
