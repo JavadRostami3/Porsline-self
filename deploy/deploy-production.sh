@@ -6,6 +6,7 @@ BRANCH="${BRANCH:-main}"
 PM2_NAME="${PM2_NAME:-survey-api-porsline-self}"
 NODE_BIN_DIR="${NODE_BIN_DIR:-/root/.nvm/versions/node/v24.14.1/bin}"
 BACKUP_ROOT="${BACKUP_ROOT:-/root/porsline-deploy-backups}"
+SKIP_DB_PUSH="${SKIP_DB_PUSH:-0}"
 
 export PATH="$NODE_BIN_DIR:$PATH"
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
@@ -57,9 +58,18 @@ set -a
 source ./.env
 set +a
 
-corepack pnpm --filter @workspace/db run push
+if [[ "$SKIP_DB_PUSH" != "1" ]]; then
+  corepack pnpm --filter @workspace/db run push
+else
+  echo "Skipping DB schema push (SKIP_DB_PUSH=1)"
+fi
+
 corepack pnpm --filter @workspace/api-server run build
 PORT=5173 BASE_PATH=/ NODE_ENV=production corepack pnpm --filter @workspace/survey-app run build
+
+# Vite inherits the caller umask. Normalize static output so Nginx can traverse/read it.
+find artifacts/survey-app/dist -type d -exec chmod 755 {} +
+find artifacts/survey-app/dist/public -type f -exec chmod 644 {} +
 
 if pm2 describe "$PM2_NAME" >/dev/null 2>&1; then
   pm2 restart "$PM2_NAME" --update-env
