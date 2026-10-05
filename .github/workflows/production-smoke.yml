@@ -10,11 +10,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check public homepage through Cloudflare
-        run: curl --fail --silent --show-error --retry 4 --retry-all-errors --retry-delay 2 --max-time 20 --output /dev/null https://porsline.littlejay.tech/
-
-      - name: Check public API health through Cloudflare
+      - name: Verify authoritative DNS
         shell: bash
         run: |
-          body="$(curl --fail --silent --show-error --retry 4 --retry-all-errors --retry-delay 2 --max-time 20 https://porsline.littlejay.tech/api/healthz)"
+          set -euo pipefail
+          ns="$(dig +short NS littlejay.tech | head -n1)"
+          test -n "$ns"
+          ip="$(dig +short @"$ns" porsline.littlejay.tech A | head -n1)"
+          test "$ip" = "45.129.38.36"
+
+      - name: Check public homepage from external runner
+        run: curl --fail --silent --show-error --resolve porsline.littlejay.tech:443:45.129.38.36 --max-time 20 --output /dev/null https://porsline.littlejay.tech/
+
+      - name: Check public API health from external runner
+        shell: bash
+        run: |
+          body="$(curl --fail --silent --show-error --resolve porsline.littlejay.tech:443:45.129.38.36 --max-time 20 https://porsline.littlejay.tech/api/healthz)"
           test "$body" = '{"status":"ok"}'
